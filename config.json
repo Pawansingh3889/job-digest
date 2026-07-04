@@ -35,6 +35,12 @@
     "north america only", "us residents", "us citizens",
     "located in the us", "canada only", "latam only", "apac only"
   ],
+  "semantic": {
+    "enabled": true,
+    "weight": 30,
+    "url": "http://localhost:11434",
+    "model": "nomic-embed-text"
+  },
   "jobicy": { "geo": "uk", "count": 50 },
   "watchlist": {
     "greenhouse": ["monzo", "gocardless", "canonical", "gitlab", "grafanalabs"]

@@ -287,6 +287,92 @@ def fetch_greenhouse_watchlist(cfg, errors):
     return jobs
 
 
+# ------------------------------------------------------- semantic matching
+
+def embed(text, sem, errors):
+    r = requests.post(
+        sem.get("url", "http://localhost:11434").rstrip("/") + "/api/embeddings",
+        json={"model": sem.get("model", "nomic-embed-text"), "prompt": text[:2000]},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()["embedding"]
+
+
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def profile_vector(sem, errors):
+    """Embed the base CV once; cache next to it, refresh when the CV changes."""
+    try:
+        profile = json.loads((HERE / "profile.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    source = None
+    for candidate in profile.get("base_cv_paths", []):
+        p = Path(candidate)
+        if p.exists() and p.suffix == ".md":
+            source = p
+            break
+    if source is None:
+        return None
+    cache = HERE / ".profile-vec.json"
+    mtime = source.stat().st_mtime
+    if cache.exists():
+        data = json.loads(cache.read_text(encoding="utf-8"))
+        if data.get("mtime") == mtime and data.get("model") == sem.get("model"):
+            return data["vec"]
+    vec = embed(source.read_text(encoding="utf-8", errors="replace"), sem, errors)
+    cache.write_text(json.dumps({"mtime": mtime, "model": sem.get("model"), "vec": vec}), encoding="utf-8")
+    return vec
+
+
+def semantic_pass(scored, cfg, errors, db_path):
+    """Blend embedding similarity between each job and the CV into the score.
+    Runs only when the local embedding server answers; otherwise a no-op."""
+    sem = cfg.get("semantic") or {}
+    if not sem.get("enabled"):
+        return scored
+    try:
+        pvec = profile_vector(sem, errors)
+    except Exception:
+        errors.append("semantic: embedding server unreachable, keyword-only run")
+        return scored
+    if pvec is None:
+        return scored
+    con = sqlite3.connect(db_path)
+    con.execute("CREATE TABLE IF NOT EXISTS vectors (url TEXT PRIMARY KEY, model TEXT, vec TEXT)")
+    weight = sem.get("weight", 30)
+    out = []
+    for job, points, matched in scored:
+        try:
+            row = con.execute("SELECT vec FROM vectors WHERE url = ? AND model = ?",
+                              (job["url"], sem.get("model"))).fetchone()
+            if row:
+                jvec = json.loads(row[0])
+            else:
+                jvec = embed(job["title"] + "\n" + job["description"][:1800], sem, errors)
+                con.execute("INSERT OR REPLACE INTO vectors (url, model, vec) VALUES (?, ?, ?)",
+                            (job["url"], sem.get("model"), json.dumps(jvec)))
+                con.commit()
+            sim = cosine(pvec, jvec)
+            points += round(sim * weight)
+            matched.append(f"semantic:{sim:.2f}")
+        except Exception:
+            errors.append("semantic: embedding failed mid-run, keyword-only for the rest")
+            out.append((job, points, matched))
+            out.extend(scored[len(out):])
+            con.close()
+            return out
+        out.append((job, points, matched))
+    con.close()
+    return out
+
+
 UK_SOURCES = {"adzuna", "reed"}          # UK by construction
 REMOTE_SOURCES = {"remotive", "remoteok", "weworkremotely", "jobicy"}  # remote by construction
 
@@ -514,6 +600,7 @@ def main():
             continue  # remote bonus alone must not smuggle unrelated roles in
         if points >= cfg.get("min_score", 10):
             scored.append((job, points, matched))
+    scored = semantic_pass(scored, cfg, errors, HERE / "seen.db")
     scored.sort(key=lambda row: row[1], reverse=True)
     unique, seen_keys = [], set()
     for row in scored:  # same role posted under several categories/sources

@@ -6,3 +6,4 @@ applications/
 __pycache__/
 cv-master.html
 pipeline-ledger.db
+.profile-vec.json
