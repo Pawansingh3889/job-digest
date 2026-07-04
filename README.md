@@ -129,10 +129,6 @@ digests/         HTML output (gitignored)
 applications/    one folder per application pack (gitignored)
 ```
 
-## License
-
-MIT
-
 ## Live dashboard
 
 ```
@@ -146,3 +142,7 @@ computed "suggested next commands" panel: complete packs surface as fill
 commands, unstaged picks as tailor commands, high-scoring unpicked roles as
 pick commands, a stale digest as a refresh, and applications silent for two
 weeks as follow-up reminders. Click a command to copy it.
+
+## License
+
+MIT
