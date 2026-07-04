@@ -2,6 +2,8 @@
 
 Automates everything up to the submit click, which stays human:
 
+  apply.py run [n]              refresh the digest now; with n: pick, open
+                                the form in the browser, start the fill walker
   apply.py list                 show the latest digest's roles, numbered
   apply.py pick <n | url>       build an application pack for a role
   apply.py fill <slug|n>        walk the form: copies each field to the
@@ -233,6 +235,7 @@ def cmd_pick(ref):
     print("  job.md, match.md, answers.md")
     print("next: tailor the CV from match.md, then submit yourself, then: "
           f"python apply.py applied {slug}")
+    return slug, job["url"]
 
 
 def set_stage(ref, stage):
@@ -297,10 +300,34 @@ def cmd_fill(ref, print_only=False):
     for label, value in fields:
         copied = to_clipboard(str(value))
         state = "copied" if copied else "CLIPBOARD FAILED, copy manually"
-        answer = input(f"  {label}: {value}   [{state} - Enter=next, s=skip, q=quit] ")
+        try:
+            answer = input(f"  {label}: {value}   [{state} - Enter=next, s=skip, q=quit] ")
+        except EOFError:
+            break
         if answer.strip().lower() == "q":
             break
     print(f"\nwhen submitted: python apply.py applied {slug}")
+
+
+def cmd_run(ref=None):
+    import subprocess
+    import webbrowser
+
+    print("refreshing digest...")
+    result = subprocess.run(
+        [sys.executable, str(HERE / "digest.py"), "--quiet"],
+        cwd=HERE, capture_output=True, text=True,
+    )
+    print(result.stdout.strip())
+    if not ref:
+        print()
+        cmd_list()
+        print("\nnext: python apply.py run <n>  (pack + open form + fill walker)")
+        return
+    slug, url = cmd_pick(ref)
+    webbrowser.open(url)
+    print()
+    cmd_fill(slug)
 
 
 def cmd_status():
@@ -323,7 +350,9 @@ def main():
         print(__doc__)
         return
     cmd, rest = args[0], args[1:]
-    if cmd == "list":
+    if cmd == "run":
+        cmd_run(rest[0] if rest else None)
+    elif cmd == "list":
         cmd_list()
     elif cmd == "pick" and rest:
         cmd_pick(rest[0])
