@@ -278,13 +278,18 @@ def cmd_fill(ref, print_only=False):
     row = con.execute("SELECT company, title, url FROM apps WHERE slug = ?", (slug,)).fetchone()
     company, title, url = row
 
-    fields = []
-    for key in ("name", "email", "phone", "location", "linkedin", "github", "portfolio"):
-        if profile.get(key):
-            fields.append((key, profile[key]))
-    answers, level = screening_answers_for({"title": title}, profile)
-    for question, answer in answers.items():
-        fields.append((question, answer))
+    override = HERE / "applications" / slug / "fill-fields.json"
+    if override.exists():  # per-application field order matching the actual form
+        fields = [(label, value) for label, value in json.loads(override.read_text(encoding="utf-8"))]
+        level = detect_level(title)
+    else:
+        fields = []
+        for key in ("name", "email", "phone", "location", "linkedin", "github", "portfolio"):
+            if profile.get(key):
+                fields.append((key, profile[key]))
+        answers, level = screening_answers_for({"title": title}, profile)
+        for question, answer in answers.items():
+            fields.append((question, answer))
 
     todos = [label for label, value in fields if "TODO" in str(value)]
     print(f"filling: {title} at {company}")
