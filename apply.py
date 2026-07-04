@@ -313,7 +313,11 @@ def cmd_fill(ref, print_only=False):
             print(f"{label}: {value}")
         return
 
-    print("each field is copied to your clipboard in turn; paste it, then press Enter here.")
+    import webbrowser
+    webbrowser.open(url)
+    print("the form is opening in your browser: put it beside this window.")
+    print("each field is copied to your clipboard in turn: click the matching box on")
+    print("the form, paste, THEN press Enter here for the next one.")
     print("(s + Enter skips a field, q + Enter quits)\n")
     for label, value in fields:
         copied = to_clipboard(str(value))
@@ -325,7 +329,9 @@ def cmd_fill(ref, print_only=False):
             break
         if answer.strip().lower() == "q":
             break
-    print(f"\nwhen submitted: python apply.py applied {slug}")
+    print("\nnothing is submitted until you click Apply on the page and it shows a")
+    print("thank-you screen; the confirmation email is your proof.")
+    print(f"then: python apply.py applied {slug}")
 
 
 def cmd_tailor(ref):
