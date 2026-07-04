@@ -14,6 +14,8 @@ Automates everything up to the submit click, which stays human:
   apply.py interview <slug|n>   ... and the later stage transitions
   apply.py rejected <slug|n>
   apply.py offer <slug|n>
+  apply.py ship                 walk every ready pack back to back: form
+                                opens, walker runs, you submit, funnel updates
   apply.py status               the whole funnel in one table
 
 A pack is a folder under applications/ holding the job snapshot, a keyword
@@ -446,6 +448,40 @@ def cmd_run(ref=None):
     cmd_fill(slug)
 
 
+def cmd_ship():
+    con = db()
+    rows = con.execute(
+        "SELECT slug, company, title FROM apps WHERE stage = 'picked' ORDER BY created"
+    ).fetchall()
+    ready = []
+    for slug, company, title in rows:
+        folder = HERE / "applications" / slug
+        if (folder / "cover-letter.md").exists() and list(folder.glob("CV_*.pdf")):
+            ready.append((slug, company, title))
+    if not ready:
+        print("nothing ready to ship: a pack needs its cover letter and CV pdf first")
+        return
+    print(f"shipping run: {len(ready)} applications ready.")
+    print("per form: paste each field, attach the pdf, paste the letter, read once,")
+    print("click Apply yourself, then answer y here.\n")
+    for i, (slug, company, title) in enumerate(ready, 1):
+        print("=" * 62)
+        print(f"[{i}/{len(ready)}] {title} at {company}")
+        cmd_fill(slug)
+        try:
+            answer = input("\nsubmitted on the page? (y = mark applied, Enter = skip, q = stop) ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        choice = answer.strip().lower()
+        if choice == "y":
+            set_stage(slug, "applied")
+        elif choice == "q":
+            break
+    print("\nrun over. the funnel now:")
+    cmd_status()
+
+
 def cmd_status():
     con = db()
     rows = con.execute(
@@ -466,7 +502,9 @@ def main():
         print(__doc__)
         return
     cmd, rest = args[0], args[1:]
-    if cmd == "run":
+    if cmd == "ship":
+        cmd_ship()
+    elif cmd == "run":
         cmd_run(rest[0] if rest else None)
     elif cmd == "list":
         cmd_list()

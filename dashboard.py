@@ -76,6 +76,10 @@ def open_roles():
 def suggestions(apps, run, roles):
     tips = []
     picked_urls = {a["url"] for a in apps}
+    ready = [a for a in apps if a["stage"] == "picked" and a["has_letter"] and a["has_pdf"]]
+    if len(ready) >= 2:
+        tips.append({"cmd": ".\\apply ship",
+                     "why": f"{len(ready)} packs ready: walk them all in one run, submit each yourself"})
     for a in apps:
         if a["stage"] == "picked" and a["has_letter"] and a["has_pdf"]:
             tips.append({"cmd": f".\\apply fill {a['n']}",
