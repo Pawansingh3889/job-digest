@@ -79,7 +79,13 @@ def resolve_job(con, ref):
             "SELECT url, NULL, title, company, payload FROM seen WHERE url = ?", (ref,)
         ).fetchone()
         if not row:
-            sys.exit("that URL is not in seen.db; run digest.py first or check the link")
+            con.execute(
+                "INSERT OR IGNORE INTO seen (url, first_seen, title, company, payload) VALUES (?, ?, ?, ?, ?)",
+                (ref, datetime.now(timezone.utc).isoformat(), "(unknown role, edit job.md)", "", None),
+            )
+            con.commit()
+            print("URL was not in any digest: stub created, paste the JD into job.md")
+            row = (ref, None, "(unknown role, edit job.md)", "", None)
         return row
     run, rows = latest_shown(con)
     try:
