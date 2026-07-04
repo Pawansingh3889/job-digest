@@ -1,0 +1,41 @@
+{
+  "queries": ["data engineer", "analytics engineer", "ai engineer"],
+  "wwr_feeds": ["remote-back-end-programming-jobs"],
+  "days_back": 7,
+  "min_score": 10,
+  "max_items": 30,
+  "title_terms": [
+    "data engineer", "analytics engineer", "ai engineer",
+    "machine learning engineer", "ml engineer", "data platform",
+    "etl developer", "bi developer", "database engineer"
+  ],
+  "boost_terms": [
+    "python", "sql", "dbt", "azure", "fabric", "kql", "power bi",
+    "duckdb", "postgres", "sql server", "t-sql", "mcp", "llm",
+    "governance", "on-prem", "airflow", "snowflake", "databricks",
+    "warehouse", "lakehouse", "etl", "remote"
+  ],
+  "negative_terms": [
+    "unpaid", "internship", "security clearance", "w2 only", "c2c",
+    "10+ years", "director", "head of"
+  ],
+  "accept_locations": [
+    "uk", "united kingdom", "england", "scotland", "wales", "london",
+    "manchester", "leeds", "hull", "europe", "emea", "worldwide",
+    "anywhere", "global", "remote", "gmt", "bst", "cet"
+  ],
+  "negative_locations": [
+    "us only", "usa only", "us-based", "united states only",
+    "north america only", "us residents", "us citizens",
+    "located in the us", "canada only", "latam only", "apac only"
+  ],
+  "adzuna": { "app_id": "", "app_key": "" },
+  "reed": { "api_key": "" },
+  "email": {
+    "smtp_host": "",
+    "smtp_port": 587,
+    "username": "",
+    "password": "",
+    "to": ""
+  }
+}

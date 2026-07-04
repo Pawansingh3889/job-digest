@@ -1,0 +1,30 @@
+{
+  "name": "Your Name",
+  "email": "you@example.com",
+  "phone": "",
+  "location": "City, Country (remote preferred)",
+  "linkedin": "https://www.linkedin.com/in/your-profile",
+  "github": "https://github.com/your-username",
+  "portfolio": "",
+  "base_cv_paths": [
+    "C:\\path\\to\\your\\cv.md"
+  ],
+  "skills_lexicon": [
+    "pandas", "pytest", "fastapi", "docker", "git", "ci/cd", "linux",
+    "spark", "kafka", "terraform", "aws", "gcp", "bigquery",
+    "data modelling", "star schema", "semantic layer",
+    "rag", "vector", "embeddings", "data quality", "data governance",
+    "orchestration", "airflow", "streamlit"
+  ],
+  "screening_answers": {
+    "Do you have the right to work in this country?": "TODO",
+    "Do you require sponsorship?": "TODO",
+    "Notice period": "TODO",
+    "Salary expectation": "TODO",
+    "Location / relocation": "TODO",
+    "Earliest start date": "TODO"
+  },
+  "cautions": [
+    "Right-to-work and sponsorship answers go on formal applications under your name. Verify they are accurate for your situation before submitting anything."
+  ]
+}

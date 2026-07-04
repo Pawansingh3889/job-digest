@@ -1,0 +1,6 @@
+seen.db
+digests/
+config.local.json
+profile.json
+applications/
+__pycache__/
