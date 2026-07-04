@@ -42,9 +42,17 @@ side:
 copy profile.example.json profile.json    # then fill it in
 python apply.py list          # latest digest, numbered
 python apply.py pick 3        # or: pick <url>  - builds applications/<slug>/
+python apply.py fill 3        # walks the form: each field copied to the
+                              # clipboard in turn, you paste, you submit
 python apply.py applied 3     # after you submit; also: interview / rejected / offer
 python apply.py status        # the whole funnel in one table
 ```
+
+`fill` is the closest this tool gets to applying for you, on purpose. It works
+on any application form because it never touches the page: open the form, run
+`fill`, and paste your way down it. Fields still marked TODO in your profile
+are called out before you start, so you cannot half-fill a real application by
+accident.
 
 ## Sources
 

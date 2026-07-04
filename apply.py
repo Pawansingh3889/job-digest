@@ -4,6 +4,8 @@ Automates everything up to the submit click, which stays human:
 
   apply.py list                 show the latest digest's roles, numbered
   apply.py pick <n | url>       build an application pack for a role
+  apply.py fill <slug|n>        walk the form: copies each field to the
+                                clipboard in order, you paste and submit
   apply.py applied <slug|n>     mark a pack as submitted
   apply.py interview <slug|n>   ... and the later stage transitions
   apply.py rejected <slug|n>
@@ -212,6 +214,61 @@ def set_stage(ref, stage):
     print(f"{slug} -> {stage}")
 
 
+def to_clipboard(text):
+    import subprocess
+    try:
+        if sys.platform == "win32":
+            subprocess.run("clip", input=text.encode("utf-16-le"), check=True)
+        elif sys.platform == "darwin":
+            subprocess.run("pbcopy", input=text.encode(), check=True)
+        else:
+            subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode(), check=True)
+        return True
+    except Exception:
+        return False
+
+
+def cmd_fill(ref, print_only=False):
+    con = db()
+    profile = load("profile.json")
+    slug = resolve_app(con, ref)
+    row = con.execute("SELECT company, title, url FROM apps WHERE slug = ?", (slug,)).fetchone()
+    company, title, url = row
+
+    fields = []
+    for key in ("name", "email", "phone", "location", "linkedin", "github", "portfolio"):
+        if profile.get(key):
+            fields.append((key, profile[key]))
+    for question, answer in profile.get("screening_answers", {}).items():
+        fields.append((question, answer))
+
+    todos = [label for label, value in fields if "TODO" in str(value)]
+    print(f"filling: {title} at {company}")
+    print(f"open the form: {url}\n")
+    if todos:
+        print("WARNING these fields still say TODO in profile.json:")
+        for label in todos:
+            print(f"  - {label}")
+        print("fix them first or type the real answer on the form.\n")
+    for caution in profile.get("cautions", []):
+        print(f"CAUTION: {caution}\n")
+
+    if print_only:
+        for label, value in fields:
+            print(f"{label}: {value}")
+        return
+
+    print("each field is copied to your clipboard in turn; paste it, then press Enter here.")
+    print("(s + Enter skips a field, q + Enter quits)\n")
+    for label, value in fields:
+        copied = to_clipboard(str(value))
+        state = "copied" if copied else "CLIPBOARD FAILED, copy manually"
+        answer = input(f"  {label}: {value}   [{state} - Enter=next, s=skip, q=quit] ")
+        if answer.strip().lower() == "q":
+            break
+    print(f"\nwhen submitted: python apply.py applied {slug}")
+
+
 def cmd_status():
     con = db()
     rows = con.execute(
@@ -236,6 +293,8 @@ def main():
         cmd_list()
     elif cmd == "pick" and rest:
         cmd_pick(rest[0])
+    elif cmd == "fill" and rest:
+        cmd_fill(rest[0], print_only="--print" in rest)
     elif cmd in ("applied", "interview", "rejected", "offer") and rest:
         set_stage(rest[0], cmd)
     elif cmd == "status":
