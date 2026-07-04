@@ -4,3 +4,5 @@ config.local.json
 profile.json
 applications/
 __pycache__/
+cv-master.html
+pipeline-ledger.db

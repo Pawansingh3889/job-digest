@@ -14,6 +14,8 @@ Automates everything up to the submit click, which stays human:
   apply.py interview <slug|n>   ... and the later stage transitions
   apply.py rejected <slug|n>
   apply.py offer <slug|n>
+  apply.py sprint               one command: fetch, auto-pick, stage packs
+                                and pdfs, report what needs a human
   apply.py ship                 walk every ready pack back to back: form
                                 opens, walker runs, you submit, funnel updates
   apply.py status               the whole funnel in one table
@@ -35,6 +37,17 @@ DB = HERE / "seen.db"
 
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def audit(action, target=None, payload=None):
+    """Hash-chained pipeline ledger via agent-blackbox; silent no-op without it."""
+    try:
+        from agent_blackbox import Ledger
+    except ImportError:
+        return
+    led = Ledger(str(HERE / "pipeline-ledger.db"))
+    led.record(actor="job-digest", action=action, target=target, payload=payload)
+    led.close()
 
 
 def db():
@@ -245,6 +258,7 @@ def cmd_pick(ref):
     print("  job.md, match.md, answers.md")
     print("next: tailor the CV from match.md, then submit yourself, then: "
           f"python apply.py applied {slug}")
+    audit("pick", slug, job["url"])
     return slug, job["url"]
 
 
@@ -257,6 +271,7 @@ def set_stage(ref, stage):
     )
     con.commit()
     print(f"{slug} -> {stage}")
+    audit("stage:" + stage, slug)
 
 
 def to_clipboard(text):
@@ -448,6 +463,78 @@ def cmd_run(ref=None):
     cmd_fill(slug)
 
 
+def letter_written(folder):
+    letter = folder / "cover-letter.md"
+    if not letter.exists():
+        return False
+    return "[WHY THEM" not in letter.read_text(encoding="utf-8", errors="replace")
+
+
+def render_pdf(slug, company):
+    master = HERE / "cv-master.html"
+    if not master.exists():
+        print("  (no cv-master.html in the repo root; pdf skipped)")
+        return False
+    import subprocess
+    folder = HERE / "applications" / slug
+    (folder / "cv.html").write_text(master.read_text(encoding="utf-8"), encoding="utf-8")
+    token = re.sub(r"[^A-Za-z0-9]", "", (company or "company").split()[0]).title()
+    out = folder / f"CV_{token}.pdf"
+    for edge in (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                 r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"):
+        if Path(edge).exists():
+            src = "file:///" + str(folder / "cv.html").replace("\\", "/")
+            subprocess.run([edge, "--headless", "--disable-gpu", "--no-pdf-header-footer",
+                            f"--print-to-pdf={out}", src], capture_output=True, timeout=90)
+            return out.exists()
+    return False
+
+
+def cmd_sprint():
+    """One command: fetch, auto-pick everything above the threshold, stage
+    packs and CV pdfs, then report exactly what still needs a human."""
+    import subprocess
+    audit("sprint")
+    cfg = load("config.json")
+    threshold = cfg.get("auto_pick_score", 60)
+    print("sprint: refreshing digest...")
+    result = subprocess.run([sys.executable, str(HERE / "digest.py"), "--quiet"],
+                            cwd=HERE, capture_output=True, text=True)
+    print(result.stdout.strip())
+
+    con = db()
+    picked_urls = {r[0] for r in con.execute("SELECT url FROM apps").fetchall()}
+    _, rows = latest_shown(con)
+    staged = []
+    for url, score, title, company, _payload in rows:
+        if url in picked_urls or (score or 0) < threshold:
+            continue
+        print(f"\nauto-pick [{score}] {title} - {company}")
+        slug, _ = cmd_pick(url)
+        cmd_tailor(slug)
+        if render_pdf(slug, company):
+            print("  cv pdf rendered")
+        staged.append(slug)
+
+    con = db()
+    rows = con.execute("SELECT slug, company, title FROM apps WHERE stage='picked' ORDER BY created").fetchall()
+    ready, needs_letter = [], []
+    for slug, company, title in rows:
+        folder = HERE / "applications" / slug
+        has_pdf = bool(list(folder.glob("CV_*.pdf")))
+        if has_pdf and letter_written(folder):
+            ready.append((company, title))
+        else:
+            needs_letter.append((company, title))
+    print("\n" + "=" * 62)
+    print(f"sprint done: {len(staged)} newly staged, {len(ready)} ready to ship, {len(needs_letter)} need a letter")
+    for company, title in ready:
+        print(f"  READY   {title} - {company}")
+    for company, title in needs_letter:
+        print(f"  LETTER  {title} - {company}   (write it, or draft with Claude, then verify)")
+    print("\nnext: .\\apply ship   (walks every READY pack; you submit each)")
+
+
 def cmd_ship():
     con = db()
     rows = con.execute(
@@ -456,7 +543,7 @@ def cmd_ship():
     ready = []
     for slug, company, title in rows:
         folder = HERE / "applications" / slug
-        if (folder / "cover-letter.md").exists() and list(folder.glob("CV_*.pdf")):
+        if letter_written(folder) and list(folder.glob("CV_*.pdf")):
             ready.append((slug, company, title))
     if not ready:
         print("nothing ready to ship: a pack needs its cover letter and CV pdf first")
@@ -502,7 +589,20 @@ def main():
         print(__doc__)
         return
     cmd, rest = args[0], args[1:]
-    if cmd == "ship":
+    if cmd == "sprint":
+        cmd_sprint()
+    elif cmd == "ledger":
+        try:
+            from agent_blackbox import Ledger
+        except ImportError:
+            sys.exit("agent-blackbox not installed")
+        led = Ledger(str(HERE / "pipeline-ledger.db"))
+        res = led.verify()
+        print(f"ledger verify: ok={res.ok} entries={res.verified}")
+        for e in list(led.entries())[-10:]:
+            print(f"  {e.ts}  {e.action:<16} {e.target or ''}")
+        led.close()
+    elif cmd == "ship":
         cmd_ship()
     elif cmd == "run":
         cmd_run(rest[0] if rest else None)
