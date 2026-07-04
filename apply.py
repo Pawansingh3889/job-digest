@@ -290,6 +290,11 @@ def cmd_fill(ref, print_only=False):
         answers, level = screening_answers_for({"title": title}, profile)
         for question, answer in answers.items():
             fields.append((question, answer))
+        folder = HERE / "applications" / slug
+        for pdf in sorted(folder.glob("CV_*.pdf")):
+            fields.append(("Resume: click Add file, pick this path", str(pdf)))
+        if (folder / "cover-letter.md").exists():
+            fields.append(("Cover letter: paste the whole file", str(folder / "cover-letter.md")))
 
     todos = [label for label, value in fields if "TODO" in str(value)]
     print(f"filling: {title} at {company}")
