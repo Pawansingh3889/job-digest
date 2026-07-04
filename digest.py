@@ -330,24 +330,31 @@ def record_shown(rows, db_path):
 
 # ---------------------------------------------------------------- output
 
-def build_html(rows, errors, counts, cfg):
+def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=frozenset()):
     e = html.escape
     today = datetime.now().strftime("%A %d %B %Y")
+    new_count = sum(1 for job, _, _ in rows if job["url"] in new_urls)
     parts = [
         "<meta charset='utf-8'><title>Job digest</title>",
         "<div style='font-family:Segoe UI,Arial,sans-serif;max-width:860px;margin:24px auto;color:#1a1d29;'>",
         f"<h2 style='margin-bottom:2px;'>Job digest, {e(today)}</h2>",
-        f"<p style='color:#666;margin-top:0;'>{len(rows)} new since last run. "
+        f"<p style='color:#666;margin-top:0;'>{len(rows)} open roles, {new_count} new today. "
+        "Roles stay here until applied or rejected. "
         + " · ".join(f"{k}: {v}" for k, v in counts.items()) + "</p>",
     ]
     for job, points, matched in rows:
+        badge = ""
+        if job["url"] in new_urls:
+            badge += "<span style='background:#0a66c2;color:#fff;font-size:11px;border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:2px;'>new</span>"
+        if job["url"] in picked_urls:
+            badge += "<span style='background:#e8a411;color:#fff;font-size:11px;border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:2px;'>in progress</span>"
         terms = ", ".join(t for t in matched if not t.startswith("NOT:"))[:160]
         salary = f" · {e(job['salary'])}" if job["salary"] else ""
         posted = job["posted"].strftime("%d %b") if job["posted"] else ""
         parts.append(
             "<div style='border:1px solid #e3e6ef;border-radius:8px;padding:14px 16px;margin:10px 0;'>"
             f"<div style='font-size:16px;font-weight:600;'><a href='{e(job['url'])}' "
-            f"style='color:#0a66c2;text-decoration:none;'>{e(job['title'])}</a></div>"
+            f"style='color:#0a66c2;text-decoration:none;'>{e(job['title'])}</a>{badge}</div>"
             f"<div style='color:#444;margin-top:2px;'>{e(job['company'])} · {e(job['location'] or 'remote')}{salary}</div>"
             f"<div style='color:#888;font-size:12px;margin-top:6px;'>score {points} · {e(job['source'])}"
             + (f" · posted {posted}" if posted else "")
@@ -355,7 +362,7 @@ def build_html(rows, errors, counts, cfg):
             + "</div></div>"
         )
     if not rows:
-        parts.append("<p>Nothing new above the score threshold today.</p>")
+        parts.append("<p>Nothing open above the score threshold. Applied and rejected roles drop off this page.</p>")
     if errors:
         parts.append(
             "<p style='color:#a33;font-size:12px;'>Source errors: " + e("; ".join(errors)) + "</p>"
@@ -418,8 +425,22 @@ def main():
         counts[job["source"]] = counts.get(job["source"], 0) + 1
 
     fresh = split_new(kept, HERE / "seen.db")
+    new_urls = {j["url"] for j in fresh}
+
+    # inbox model: a role stays listed until applied or rejected, not until seen
+    done_urls, picked_urls = set(), set()
+    try:
+        con = sqlite3.connect(HERE / "seen.db")
+        done_urls = {r[0] for r in con.execute("SELECT url FROM apps WHERE stage != 'picked'")}
+        picked_urls = {r[0] for r in con.execute("SELECT url FROM apps WHERE stage = 'picked'")}
+        con.close()
+    except sqlite3.OperationalError:
+        pass
+
     scored = []
-    for job in fresh:
+    for job in kept:
+        if job["url"] in done_urls:
+            continue
         points, matched = score(job, cfg)
         if points >= cfg.get("min_score", 10):
             scored.append((job, points, matched))
@@ -434,7 +455,7 @@ def main():
     scored = unique[: cfg.get("max_items", 30)]
     record_shown(scored, HERE / "seen.db")
 
-    body = build_html(scored, errors, counts, cfg)
+    body = build_html(scored, errors, counts, cfg, new_urls, picked_urls)
     out_dir = HERE / "digests"
     out_dir.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d")
@@ -442,10 +463,11 @@ def main():
     out_file.write_text(body, encoding="utf-8")
     (out_dir / "latest.html").write_text(body, encoding="utf-8")
 
-    subject = f"Job digest: {len(scored)} new ({stamp})"
+    new_count = sum(1 for job, _, _ in scored if job["url"] in new_urls)
+    subject = f"Job digest: {len(scored)} open, {new_count} new ({stamp})"
     emailed = send_email(cfg, subject, body, errors) if scored else False
 
-    print(f"fetched={len(all_jobs)} eligible={len(kept)} new={len(fresh)} shown={len(scored)} emailed={emailed}")
+    print(f"fetched={len(all_jobs)} eligible={len(kept)} new={len(fresh)} open={len(scored)} emailed={emailed}")
     for job, points, _ in scored[:5]:
         print(f"  [{points:>3}] {job['title']} - {job['company']} ({job['source']})")
     if errors:
