@@ -132,3 +132,17 @@ applications/    one folder per application pack (gitignored)
 ## License
 
 MIT
+
+## Live dashboard
+
+```
+python dashboard.py     # or: .\dashboard on Windows
+```
+
+Serves http://127.0.0.1:8765 (loopback only, standard library only) and
+refreshes every three seconds from seen.db and applications/. Shows the
+funnel as a board with per-pack readiness chips, the open-roles inbox, and a
+computed "suggested next commands" panel: complete packs surface as fill
+commands, unstaged picks as tailor commands, high-scoring unpicked roles as
+pick commands, a stale digest as a refresh, and applications silent for two
+weeks as follow-up reminders. Click a command to copy it.
