@@ -232,8 +232,63 @@ def fetch_reed(cfg, errors):
     return jobs
 
 
+def fetch_jobicy(cfg, errors):
+    conf = cfg.get("jobicy") or {}
+    if not conf:
+        return []
+    jobs = []
+    try:
+        r = requests.get(
+            "https://jobicy.com/api/v2/remote-jobs",
+            params={"count": conf.get("count", 50), "geo": conf.get("geo", "uk")},
+            headers=UA, timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        for j in r.json().get("jobs", []):
+            salary = ""
+            if j.get("annualSalaryMin"):
+                salary = f"{j.get('salaryCurrency', '')} {int(j['annualSalaryMin']):,}-{int(j.get('annualSalaryMax') or j['annualSalaryMin']):,}"
+            jobs.append(norm(
+                "jobicy", j.get("jobTitle"), j.get("companyName"), j.get("jobGeo"),
+                salary, j.get("url"), parse_date(str(j.get("pubDate", ""))),
+                j.get("jobDescription") or j.get("jobExcerpt") or "",
+            ))
+    except Exception as exc:
+        errors.append(f"jobicy: {exc}")
+    return jobs
+
+
+def fetch_greenhouse_watchlist(cfg, errors):
+    """Direct employer boards via Greenhouse's public API. Pre-filtered by
+    title so a 300-role board contributes only the roles that look like yours."""
+    slugs = (cfg.get("watchlist") or {}).get("greenhouse", [])
+    titles = [t.lower() for t in cfg.get("title_terms", [])]
+    jobs = []
+    for slug in slugs:
+        try:
+            r = requests.get(
+                f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+                params={"content": "true"}, headers=UA, timeout=TIMEOUT,
+            )
+            r.raise_for_status()
+            for j in r.json().get("jobs", []):
+                title = j.get("title", "")
+                if not any(t in title.lower() for t in titles):
+                    continue
+                content = html.unescape(j.get("content", ""))
+                jobs.append(norm(
+                    f"greenhouse:{slug}", title, slug.capitalize(),
+                    (j.get("location") or {}).get("name", ""), "",
+                    j.get("absolute_url"), parse_date(j.get("updated_at", "")),
+                    content,
+                ))
+        except Exception as exc:
+            errors.append(f"greenhouse {slug}: {exc}")
+    return jobs
+
+
 UK_SOURCES = {"adzuna", "reed"}          # UK by construction
-REMOTE_SOURCES = {"remotive", "remoteok", "weworkremotely"}  # remote by construction
+REMOTE_SOURCES = {"remotive", "remoteok", "weworkremotely", "jobicy"}  # remote by construction
 
 
 # ---------------------------------------------------------------- filtering
@@ -246,6 +301,12 @@ def eligible(job, cfg) -> bool:
     if job["source"] in UK_SOURCES:
         return True
     loc = job["location"].lower()
+    if job["source"].startswith("greenhouse"):
+        # company boards state the hiring country; "US | Remote" is not remote for you
+        if re.search(r"\b(us|usa|canada|americas|latam|apac|india|australia|germany|mexico)\b", loc) \
+                and not re.search(r"\b(uk|united kingdom|emea|europe|worldwide|global|anywhere)\b", loc):
+            return False
+        return True
     if not loc:
         return True  # remote board, unspecified = usually worldwide
     return any(marker in loc for marker in cfg["accept_locations"])
@@ -406,6 +467,8 @@ def main():
         fetch_remotive(cfg, errors)
         + fetch_remoteok(cfg, errors)
         + fetch_wwr(cfg, errors)
+        + fetch_jobicy(cfg, errors)
+        + fetch_greenhouse_watchlist(cfg, errors)
         + fetch_adzuna(cfg, errors)
         + fetch_reed(cfg, errors)
     )
@@ -413,7 +476,10 @@ def main():
     cutoff = datetime.now(timezone.utc) - timedelta(days=cfg.get("days_back", 7))
     kept, kept_urls = [], set()
     for job in all_jobs:
-        if job["posted"] and job["posted"].tzinfo and job["posted"] < cutoff:
+        # company boards list roles as long as they are open; recency only
+        # applies to feed-style sources
+        if (job["posted"] and job["posted"].tzinfo and job["posted"] < cutoff
+                and not job["source"].startswith("greenhouse")):
             continue
         if job["url"] in kept_urls:  # same posting via several search queries
             continue

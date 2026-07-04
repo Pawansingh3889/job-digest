@@ -35,6 +35,10 @@
     "north america only", "us residents", "us citizens",
     "located in the us", "canada only", "latam only", "apac only"
   ],
+  "jobicy": { "geo": "uk", "count": 50 },
+  "watchlist": {
+    "greenhouse": ["monzo", "gocardless", "canonical", "gitlab", "grafanalabs"]
+  },
   "adzuna": { "app_id": "", "app_key": "" },
   "reed": { "api_key": "" },
   "email": {
