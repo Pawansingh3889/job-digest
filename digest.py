@@ -303,7 +303,7 @@ def eligible(job, cfg) -> bool:
     loc = job["location"].lower()
     if job["source"].startswith("greenhouse"):
         # company boards state the hiring country; "US | Remote" is not remote for you
-        if re.search(r"\b(us|usa|canada|americas|latam|apac|india|australia|germany|mexico)\b", loc) \
+        if re.search(r"\b(us|usa|u\.s\.|united states|canada|americas|latam|apac|india|australia|germany|mexico)\b", loc) \
                 and not re.search(r"\b(uk|united kingdom|emea|europe|worldwide|global|anywhere)\b", loc):
             return False
         return True
