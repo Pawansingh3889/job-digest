@@ -61,7 +61,7 @@ def latest_shown(con):
     rows = con.execute(
         "SELECT s.url, s.score, seen.title, seen.company, seen.payload "
         "FROM shown s JOIN seen ON seen.url = s.url "
-        "WHERE s.run_date = ? ORDER BY s.score DESC",
+        "WHERE s.run_date = ? ORDER BY s.score DESC, s.url",
         (run,),
     ).fetchall()
     return run, rows
