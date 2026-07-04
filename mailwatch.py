@@ -72,6 +72,85 @@ def company_token(company):
     return token[0] if token and token[0] else None
 
 
+def parse_alert_jobs(html):
+    """Pull (title, url) pairs out of a job-alert email body.
+    Matches LinkedIn jobs/view and Indeed viewjob links, using the anchor
+    text as the title where present."""
+    jobs = []
+    seen = set()
+    pattern = re.compile(
+        r'<a[^>]+href="([^"]*(?:linkedin\.com/(?:comm/)?jobs/view/\d+|indeed\.com/(?:viewjob|rc/clk))[^"]*)"[^>]*>(.*?)</a>',
+        re.I | re.S,
+    )
+    for url, inner in pattern.findall(html):
+        url = url.split("?")[0].replace("/comm/", "/").rstrip("/")
+        if url in seen:
+            continue
+        title = re.sub(r"<[^>]+>", " ", inner)
+        title = re.sub(r"\s+", " ", title).strip()
+        if not title or len(title) < 3 or title.lower() in ("view job", "apply now", "see job"):
+            title = "(LinkedIn role, open the link)"
+        jobs.append((title[:120], url))
+        seen.add(url)
+    return jobs
+
+
+def harvest(verbose=True):
+    """Read job-alert emails and seed the roles into the digest inbox so they
+    appear in `apply.py list` and the dashboard next to board jobs. No scraping:
+    the jobs came to you, in email you asked LinkedIn to send."""
+    user, password = creds()
+    con = sqlite3.connect(DB)
+    con.execute("CREATE TABLE IF NOT EXISTS seen (url TEXT PRIMARY KEY, first_seen TEXT, title TEXT, company TEXT, payload TEXT)")
+    con.execute("CREATE TABLE IF NOT EXISTS shown (run_date TEXT, url TEXT, score INT, PRIMARY KEY (run_date, url))")
+
+    box = imaplib.IMAP4_SSL("imap.gmail.com")
+    box.login(user, password)
+    box.select("INBOX", readonly=True)
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%d-%b-%Y")
+    _, data = box.search(None, f'(SINCE "{since}")')
+    ids = data[0].split()
+
+    found, added = [], 0
+    stamp = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc).isoformat()
+    for mid in ids[-300:]:
+        _, msg_data = box.fetch(mid, "(BODY.PEEK[])")
+        msg = email.message_from_bytes(msg_data[0][1], policy=email.policy.default)
+        sender = (msg.get("From") or "").lower()
+        if not any(s in sender for s in ALERT_SENDERS):
+            continue
+        body = msg.get_body(preferencelist=("html", "plain"))
+        html = body.get_content() if body else ""
+        source = "linkedin-alert" if "linkedin" in sender else "indeed-alert"
+        for title, url in parse_alert_jobs(html):
+            known = con.execute("SELECT 1 FROM seen WHERE url = ?", (url,)).fetchone()
+            payload = json.dumps({"source": source, "title": title, "company": "",
+                                  "location": "", "salary": "", "url": url,
+                                  "posted": None, "description": ""})
+            con.execute("INSERT OR IGNORE INTO seen (url, first_seen, title, company, payload) VALUES (?,?,?,?,?)",
+                        (url, now, title, "", payload))
+            con.execute("INSERT OR IGNORE INTO shown (run_date, url, score) VALUES (?,?,?)",
+                        (stamp, url, 40))
+            if not known:
+                added += 1
+                found.append((source, title, url))
+    con.commit()
+    con.close()
+    box.logout()
+
+    if verbose or found:
+        print(f"harvest: {added} new job-alert roles seeded into the inbox")
+        for source, title, url in found[:20]:
+            print(f"  [{source}] {title}")
+        if added:
+            print("\nthey are now in `apply.py list` and the dashboard.")
+            print("LinkedIn job pages need a login, so a pack has no JD until you add it:")
+            print("pick one, then paste the description into its job.md (or read it in a")
+            print("Claude session with the browser extension), then tailor and fill as usual.")
+    return found
+
+
 def one_pass(verbose=True):
     user, password = creds()
     con = sqlite3.connect(DB)
@@ -132,7 +211,9 @@ def one_pass(verbose=True):
 
 
 def main():
-    if "--watch" in sys.argv:
+    if "--harvest" in sys.argv:
+        harvest()
+    elif "--watch" in sys.argv:
         print("watching the inbox every 120s, Ctrl+C stops")
         while True:
             try:
