@@ -146,3 +146,19 @@ weeks as follow-up reminders. Click a command to copy it.
 ## License
 
 MIT
+
+## Inbox tracking
+
+```
+python mailwatch.py            # one pass; or: .\mailwatch
+python mailwatch.py --watch    # poll every two minutes
+```
+
+Reads your inbox over IMAP (read-only: nothing sent, deleted, or marked) and
+closes the loop the rest of the tool cannot see: an ATS confirmation email
+matching a picked application moves it to applied automatically, rejection
+wording is surfaced with the command to confirm it, and job links inside
+LinkedIn or Indeed alert emails are printed as ready-made pick commands.
+Needs a Gmail app password in config.local.json, the same email block SMTP
+uses. Set LinkedIn job alerts to email and they flow into the pipeline
+without any scraping.
