@@ -16,6 +16,12 @@
     "rag", "vector", "embeddings", "data quality", "data governance",
     "orchestration", "airflow", "streamlit"
   ],
+  "salary_bands": {
+    "junior": "TODO e.g. GBP 30,000-40,000",
+    "mid": "TODO e.g. GBP 40,000-50,000",
+    "senior": "TODO e.g. GBP 50,000-60,000",
+    "default": "TODO range used when the title has no level"
+  },
   "screening_answers": {
     "Do you have the right to work in this country?": "TODO",
     "Do you require sponsorship?": "TODO",

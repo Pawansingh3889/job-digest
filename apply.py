@@ -97,6 +97,31 @@ def resolve_app(con, ref):
     return row[0]
 
 
+def detect_level(title):
+    t = (title or "").lower()
+    if re.search(r"\b(senior|sr|staff|principal|lead)\b", t):
+        return "senior"
+    if re.search(r"\b(junior|jr|graduate|grad|entry|trainee|apprentice)\b", t):
+        return "junior"
+    if re.search(r"\b(mid|intermediate)\b", t):
+        return "mid"
+    return None
+
+
+def screening_answers_for(job, profile):
+    """The stored answers, with the salary line swapped for the band matching
+    the detected role level (junior / mid / senior / default)."""
+    answers = dict(profile.get("screening_answers", {}))
+    level = detect_level(job.get("title", ""))
+    bands = profile.get("salary_bands", {})
+    band = bands.get(level or "") or bands.get("default", "")
+    if band and "TODO" not in band:
+        for question in answers:
+            if "salary" in question.lower():
+                answers[question] = band
+    return answers, level
+
+
 def term_hits(terms, text):
     hits = []
     for term in terms:
@@ -179,12 +204,13 @@ def cmd_pick(ref):
     )
 
     # --- answers.md: screening sheet from stored truth ------------------------
-    answers = profile.get("screening_answers", {})
+    answers, level = screening_answers_for(job, profile)
     body = [
         f"# Screening answers: {job['company']}",
         "",
         f"Advertised salary: {job.get('salary') or 'not stated'} "
         "(sanity-check your expectation against this before pasting)",
+        f"Detected level: {level or 'unspecified'} (salary answer selected accordingly)",
         "",
     ]
     for question, answer in answers.items():
@@ -245,11 +271,13 @@ def cmd_fill(ref, print_only=False):
     for key in ("name", "email", "phone", "location", "linkedin", "github", "portfolio"):
         if profile.get(key):
             fields.append((key, profile[key]))
-    for question, answer in profile.get("screening_answers", {}).items():
+    answers, level = screening_answers_for({"title": title}, profile)
+    for question, answer in answers.items():
         fields.append((question, answer))
 
     todos = [label for label, value in fields if "TODO" in str(value)]
     print(f"filling: {title} at {company}")
+    print(f"detected level: {level or 'unspecified'} (salary answer selected accordingly)")
     print(f"open the form: {url}\n")
     if todos:
         print("WARNING these fields still say TODO in profile.json:")
