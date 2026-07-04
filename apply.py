@@ -6,6 +6,8 @@ Automates everything up to the submit click, which stays human:
                                 the form in the browser, start the fill walker
   apply.py list                 show the latest digest's roles, numbered
   apply.py pick <n | url>       build an application pack for a role
+  apply.py tailor <slug|n>      stage cv-draft.md, cover-letter.md and
+                                interview-notes.md inside the pack folder
   apply.py fill <slug|n>        walk the form: copies each field to the
                                 clipboard in order, you paste and submit
   apply.py applied <slug|n>     mark a pack as submitted
@@ -309,6 +311,97 @@ def cmd_fill(ref, print_only=False):
     print(f"\nwhen submitted: python apply.py applied {slug}")
 
 
+def cmd_tailor(ref):
+    con = db()
+    cfg = load("config.json")
+    profile = load("profile.json")
+    slug = resolve_app(con, ref)
+    company, title, url = con.execute(
+        "SELECT company, title, url FROM apps WHERE slug = ?", (slug,)
+    ).fetchone()
+    folder = HERE / "applications" / slug
+    if not folder.exists():
+        sys.exit(f"pack folder missing; run: apply.py pick first ({slug})")
+
+    payload = con.execute("SELECT payload FROM seen WHERE url = ?", (url,)).fetchone()
+    job = json.loads(payload[0]) if payload and payload[0] else {"title": title, "description": ""}
+    jd_text = (job.get("title", "") + " " + job.get("description", "")).lower()
+
+    base = None
+    for candidate in profile.get("base_cv_paths", []):
+        path = Path(candidate)
+        if path.exists() and path.suffix == ".md":
+            base = path
+            break
+    if base is None:
+        for candidate in profile.get("base_cv_paths", []):
+            if Path(candidate).exists():
+                base = Path(candidate)
+                break
+    base_text = base.read_text(encoding="utf-8", errors="replace") if base else ""
+
+    lexicon = sorted(set(
+        t.lower() for t in cfg.get("title_terms", []) + cfg.get("boost_terms", [])
+        + profile.get("skills_lexicon", [])
+    ))
+    jd_terms = term_hits(lexicon, jd_text)
+    missing = [t for t in jd_terms if t not in base_text.lower()]
+    demands = [
+        line.strip()[:200]
+        for line in (job.get("description") or "").splitlines()
+        if re.search(r"\b(essential|required|must have|you will need|we need)\b", line, re.I)
+    ][:10]
+
+    checklist = "\n".join(
+        ["<!--", f"TAILORING CHECKLIST for {title} at {company} (delete this block before export)", ""]
+        + ["Weave in IF TRUE (never invent): " + (", ".join(missing) or "nothing missing")]
+        + ["", "Lines the JD marks as required:"]
+        + [f"  - {d}" for d in demands or ["(none matched)"]]
+        + ["", "Voice rules: no em-dashes, no delve/leverage/robust/seamless/boasts,",
+           "short sentences, numbers where they exist, cut anything you cannot defend",
+           "in an interview.", "",
+           "ATS rules: one column, no tables or graphics, standard headings",
+           "(Summary, Experience, Education, Skills), exact JD keywords where true,",
+           "export as text-based PDF named CV_" + slugify(company or "company", 30) + ".pdf", "-->", "", ""]
+    )
+    (folder / "cv-draft.md").write_text(checklist + base_text, encoding="utf-8")
+
+    contact = " | ".join(filter(None, [profile.get("email", ""), profile.get("phone", ""), profile.get("location", "")]))
+    (folder / "cover-letter.md").write_text(
+        f"{profile.get('name', '')}\n{contact}\n\n{datetime.now():%d %B %Y}\n\n"
+        f"Re: {title}, {company}\n\n"
+        "<!-- Three short paragraphs, written in your voice (draft with Claude in a\n"
+        "session if wanted, then verify every sentence). No em-dashes, no AI-tell\n"
+        "words, nothing you would not say out loud. -->\n\n"
+        "[WHY THEM: one specific thing about this company or role, from job.md,\n"
+        "that you actually rate. One sentence of who you are.]\n\n"
+        "[PROOF: your two most relevant pieces of evidence for their required list.\n"
+        "Real projects, real numbers. See the checklist in cv-draft.md.]\n\n"
+        "[CLOSE: availability (14 days notice, can start 1 August 2026), link to\n"
+        "portfolio, one sentence asking for the conversation.]\n",
+        encoding="utf-8",
+    )
+
+    (folder / "interview-notes.md").write_text(
+        f"# Interview notes: {title} at {company}\n\n"
+        f"- Job link: {url}\n"
+        "- Applied on: \n"
+        "- CV version sent: cv-draft.md as exported on \n"
+        "- Cover letter sent: yes / no\n\n"
+        "## Their questions\n\n\n"
+        "## My answers that landed / wobbled\n\n\n"
+        "## My questions to them\n\n\n"
+        "## Follow-ups promised\n\n",
+        encoding="utf-8",
+    )
+
+    print(f"staged in {folder}:")
+    print(f"  cv-draft.md        copy of {base.name if base else 'NO BASE CV FOUND'} + tailoring checklist")
+    print("  cover-letter.md    facts filled, prose slots marked, you write the sentences")
+    print("  interview-notes.md ready for the call")
+    print("everything about this job now lives in that one folder.")
+
+
 def cmd_run(ref=None):
     import subprocess
     import webbrowser
@@ -356,6 +449,8 @@ def main():
         cmd_list()
     elif cmd == "pick" and rest:
         cmd_pick(rest[0])
+    elif cmd == "tailor" and rest:
+        cmd_tailor(rest[0])
     elif cmd == "fill" and rest:
         cmd_fill(rest[0], print_only="--print" in rest)
     elif cmd in ("applied", "interview", "rejected", "offer") and rest:
