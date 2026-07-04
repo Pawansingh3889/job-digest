@@ -315,7 +315,8 @@ def cmd_fill(ref, print_only=False):
         state = "copied" if copied else "CLIPBOARD FAILED, copy manually"
         try:
             answer = input(f"  {label}: {value}   [{state} - Enter=next, s=skip, q=quit] ")
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
+            print()
             break
         if answer.strip().lower() == "q":
             break
