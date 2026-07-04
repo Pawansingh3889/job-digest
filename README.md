@@ -40,6 +40,8 @@ side:
 
 ```
 copy profile.example.json profile.json    # then fill it in
+python apply.py run           # refresh the digest right now, show the list
+python apply.py run 3         # refresh, pack item 3, open the form, start fill
 python apply.py list          # latest digest, numbered
 python apply.py pick 3        # or: pick <url>  - builds applications/<slug>/
 python apply.py fill 3        # walks the form: each field copied to the
