@@ -6,12 +6,14 @@
   "max_items": 30,
   "remote_bonus": 15,
   "hybrid_bonus": 8,
+  "require_title_match": true,
   "title_terms": [
     "data engineer", "analytics engineer", "ai engineer",
     "machine learning engineer", "ml engineer", "data platform",
     "etl developer", "bi developer", "database engineer",
     "data analyst", "bi analyst", "insight analyst", "analytics analyst",
-    "junior data", "graduate data"
+    "junior data", "graduate data", "data scientist", "full stack developer",
+    "ai engineer"
   ],
   "boost_terms": [
     "python", "sql", "dbt", "azure", "fabric", "kql", "power bi",

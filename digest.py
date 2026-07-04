@@ -437,11 +437,14 @@ def main():
     except sqlite3.OperationalError:
         pass
 
+    title_set = {t.lower() for t in cfg.get("title_terms", [])}
     scored = []
     for job in kept:
         if job["url"] in done_urls:
             continue
         points, matched = score(job, cfg)
+        if cfg.get("require_title_match") and not any(m in title_set for m in matched):
+            continue  # remote bonus alone must not smuggle unrelated roles in
         if points >= cfg.get("min_score", 10):
             scored.append((job, points, matched))
     scored.sort(key=lambda row: row[1], reverse=True)
