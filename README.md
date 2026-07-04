@@ -85,10 +85,12 @@ by key:
 
 Transparent keyword weighting, tuned in `config.json`: a `title_terms` hit is
 +25, each `boost_terms` hit is +6, each `negative_terms` hit is -30, stated
-salary is +5. Every digest row shows the matched terms, so you can see why a
-job scored what it did and adjust. Location filtering accepts UK and
-remote-friendly postings by default and rejects single-country restrictions;
-both lists are yours to edit.
+salary is +5. Remote is a priority, not a gate: remote roles get
+`remote_bonus` (+15), hybrid gets `hybrid_bonus` (+8), on-site still appears,
+just lower. Every digest row shows the matched terms, so you can see why a
+job scored what it did and adjust. Location filtering rejects postings
+restricted to countries where you cannot be hired; the lists are yours to
+edit.
 
 ## Scheduling
 

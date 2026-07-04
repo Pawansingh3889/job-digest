@@ -4,6 +4,8 @@
   "days_back": 7,
   "min_score": 10,
   "max_items": 30,
+  "remote_bonus": 15,
+  "hybrid_bonus": 8,
   "title_terms": [
     "data engineer", "analytics engineer", "ai engineer",
     "machine learning engineer", "ml engineer", "data platform",
@@ -15,7 +17,7 @@
     "python", "sql", "dbt", "azure", "fabric", "kql", "power bi",
     "duckdb", "postgres", "sql server", "t-sql", "mcp", "llm",
     "governance", "on-prem", "airflow", "snowflake", "databricks",
-    "warehouse", "lakehouse", "etl", "remote"
+    "warehouse", "lakehouse", "etl"
   ],
   "negative_terms": [
     "unpaid", "internship", "security clearance", "w2 only", "c2c",

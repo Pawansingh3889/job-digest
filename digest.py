@@ -269,6 +269,16 @@ def score(job, cfg):
             matched.append("NOT:" + term)
     if job["salary"]:
         points += 5
+    # remote is a priority, not a gate: remote > hybrid > on-site, all listed
+    loc_text = " ".join([job["location"], job["title"], job["description"][:500]]).lower()
+    if job["source"] in REMOTE_SOURCES or any(
+        m in loc_text for m in ("remote", "work from home", "anywhere", "worldwide")
+    ):
+        points += cfg.get("remote_bonus", 15)
+        matched.append("remote")
+    elif "hybrid" in loc_text:
+        points += cfg.get("hybrid_bonus", 8)
+        matched.append("hybrid")
     return points, matched
 
 
