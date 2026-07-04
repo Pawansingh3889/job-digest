@@ -320,6 +320,7 @@ def split_new(jobs, db_path):
 def record_shown(rows, db_path):
     con = sqlite3.connect(db_path)
     stamp = datetime.now().strftime("%Y-%m-%d")
+    con.execute("DELETE FROM shown WHERE run_date = ?", (stamp,))
     con.executemany(
         "INSERT OR REPLACE INTO shown (run_date, url, score) VALUES (?, ?, ?)",
         [(stamp, job["url"], points) for job, points, _ in rows],
