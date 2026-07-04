@@ -393,12 +393,15 @@ def main():
     )
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=cfg.get("days_back", 7))
-    kept = []
+    kept, kept_urls = [], set()
     for job in all_jobs:
         if job["posted"] and job["posted"].tzinfo and job["posted"] < cutoff:
             continue
+        if job["url"] in kept_urls:  # same posting via several search queries
+            continue
         if eligible(job, cfg):
             kept.append(job)
+            kept_urls.add(job["url"])
 
     counts: dict[str, int] = {}
     for job in kept:
