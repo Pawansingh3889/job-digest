@@ -1,5 +1,5 @@
 {
-  "queries": ["data engineer", "analytics engineer", "ai engineer"],
+  "queries": ["data engineer", "analytics engineer", "ai engineer", "data analyst"],
   "wwr_feeds": ["remote-back-end-programming-jobs"],
   "days_back": 7,
   "min_score": 10,
@@ -7,7 +7,9 @@
   "title_terms": [
     "data engineer", "analytics engineer", "ai engineer",
     "machine learning engineer", "ml engineer", "data platform",
-    "etl developer", "bi developer", "database engineer"
+    "etl developer", "bi developer", "database engineer",
+    "data analyst", "bi analyst", "insight analyst", "analytics analyst",
+    "junior data", "graduate data"
   ],
   "boost_terms": [
     "python", "sql", "dbt", "azure", "fabric", "kql", "power bi",

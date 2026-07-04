@@ -180,7 +180,13 @@ def cmd_pick(ref):
 
     # --- answers.md: screening sheet from stored truth ------------------------
     answers = profile.get("screening_answers", {})
-    body = [f"# Screening answers: {job['company']}", ""]
+    body = [
+        f"# Screening answers: {job['company']}",
+        "",
+        f"Advertised salary: {job.get('salary') or 'not stated'} "
+        "(sanity-check your expectation against this before pasting)",
+        "",
+    ]
     for question, answer in answers.items():
         body.append(f"**{question}**")
         body.append(f"{answer}")
