@@ -143,10 +143,6 @@ commands, unstaged picks as tailor commands, high-scoring unpicked roles as
 pick commands, a stale digest as a refresh, and applications silent for two
 weeks as follow-up reminders. Click a command to copy it.
 
-## License
-
-MIT
-
 ## Inbox tracking
 
 ```
@@ -176,3 +172,7 @@ hand before writing one off. Pair it with `min_salary_gbp`: GBP roles whose
 top salary is below your sponsorship threshold are dropped outright, because
 below the threshold a sponsor cannot sponsor. `junior_bonus` lifts
 junior/graduate/entry titles when those are the target.
+
+## License
+
+MIT
