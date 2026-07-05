@@ -165,13 +165,22 @@ If you need a Skilled Worker visa, only employers on the official register of
 licensed sponsors can hire you. With `sponsor_check.enabled` the digest keeps a
 weekly-cached copy of the gov.uk register (about 10 MB, refreshed
 automatically), checks every company, and scores accordingly: a verified
-sponsor gets a small bonus and a `sponsor` tag; a company with no register
-match gets a heavy penalty and a `sponsor?` tag. No-match is advisory, not
-fatal: some companies are licensed under a different legal entity, so check by
-hand before writing one off. Pair it with `min_salary_gbp`: GBP roles whose
-top salary is below your sponsorship threshold are dropped outright, because
-below the threshold a sponsor cannot sponsor. `junior_bonus` lifts
-junior/graduate/entry titles when those are the target.
+sponsor gets a small bonus and a `sponsor` tag; an on-site or hybrid role at a
+company with no register match gets a heavy penalty and a `sponsor?` tag,
+because without a licence that employer cannot hire you at all. Fully remote
+roles keep the `sponsor?` tag but skip the penalty: a remote employer abroad
+can engage you through a contractor or employer-of-record arrangement that
+does not run through the sponsor register (check the specifics with an
+immigration adviser before accepting). No-match is advisory either way: some
+companies are licensed under a different legal entity, so check by hand before
+writing one off.
+
+Two companions shape the ranking around the same reality. `min_salary_gbp`
+drops GBP roles whose top salary is below your sponsorship threshold, because
+below it a sponsor cannot sponsor. `junior_bonus` lifts
+junior/graduate/entry titles, and `junior_sponsor_bonus` stacks on top when
+that junior role is at a verified sponsor: the safest door into the market
+gets ranked like it.
 
 ## License
 

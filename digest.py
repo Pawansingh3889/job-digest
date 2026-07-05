@@ -642,9 +642,15 @@ def main():
             if status == "sponsor":
                 points += sponsor_cfg.get("bonus", 5)
                 matched.append("sponsor")
+                if "junior" in matched:  # the prime target: junior at a licensed sponsor
+                    points += cfg.get("junior_sponsor_bonus", 10)
+                    matched.append("junior+sponsor")
             elif status == "no-match":
-                points -= sponsor_cfg.get("penalty", 25)
                 matched.append("sponsor?")
+                if "remote" not in matched:
+                    # on-site/hybrid UK without a sponsor licence is a dead end;
+                    # fully remote can still work via contractor/EOR arrangements
+                    points -= sponsor_cfg.get("penalty", 25)
         if points >= cfg.get("min_score", 10):
             scored.append((job, points, matched))
     scored = semantic_pass(scored, cfg, errors, HERE / "seen.db")

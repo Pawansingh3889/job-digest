@@ -9,6 +9,7 @@
   "require_title_match": true,
   "min_salary_gbp": 33400,
   "junior_bonus": 15,
+  "junior_sponsor_bonus": 10,
   "sponsor_check": { "enabled": true, "max_age_days": 7, "penalty": 25, "bonus": 5 },
   "title_terms": [
     "data engineer", "analytics engineer", "ai engineer",
