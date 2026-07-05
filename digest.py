@@ -331,6 +331,18 @@ def profile_vector(sem, errors):
     return vec
 
 
+def parse_gbp_salary(text):
+    """(min, max) from a GBP salary string, or None when absent/hourly/foreign."""
+    low = (text or "").lower()
+    if not low or "hour" in low or ("gbp" not in low and "£" not in low):
+        return None
+    nums = [int(n.replace(",", "")) for n in re.findall(r"\d[\d,]{3,}", low)]
+    nums = [n for n in nums if 1000 <= n <= 500000]
+    if not nums:
+        return None
+    return min(nums), max(nums)
+
+
 def semantic_pass(scored, cfg, errors, db_path):
     """Blend embedding similarity between each job and the CV into the score.
     Runs only when the local embedding server answers; otherwise a no-op."""
@@ -591,6 +603,19 @@ def main():
         pass
 
     title_set = {t.lower() for t in cfg.get("title_terms", [])}
+
+    sponsor_cfg = cfg.get("sponsor_check") or {}
+    sponsor_enabled = bool(sponsor_cfg.get("enabled"))
+    sponsor_cache = {}
+    if sponsor_enabled:
+        try:
+            import sponsorcheck
+            sponsor_enabled = sponsorcheck.ensure_register(sponsor_cfg.get("max_age_days", 7), errors)
+        except Exception as exc:
+            errors.append(f"sponsor check unavailable: {str(exc)[:60]}")
+            sponsor_enabled = False
+
+    floor = cfg.get("min_salary_gbp")
     scored = []
     for job in kept:
         if job["url"] in done_urls:
@@ -598,6 +623,28 @@ def main():
         points, matched = score(job, cfg)
         if cfg.get("require_title_match") and not any(m in title_set for m in matched):
             continue  # remote bonus alone must not smuggle unrelated roles in
+        if floor:
+            salary = parse_gbp_salary(job["salary"])
+            if salary and salary[1] < floor:
+                continue  # below the sponsorship salary floor: cannot be hired
+            if salary and salary[0] >= floor:
+                points += 8
+                matched.append("salary-ok")
+        if re.search(r"\b(junior|graduate|grad|entry|trainee)\b", job["title"].lower()):
+            points += cfg.get("junior_bonus", 15)
+            matched.append("junior")
+        if sponsor_enabled and job["company"]:
+            key = job["company"].lower()
+            if key not in sponsor_cache:
+                import sponsorcheck
+                sponsor_cache[key] = sponsorcheck.check(job["company"])
+            status, _detail = sponsor_cache[key]
+            if status == "sponsor":
+                points += sponsor_cfg.get("bonus", 5)
+                matched.append("sponsor")
+            elif status == "no-match":
+                points -= sponsor_cfg.get("penalty", 25)
+                matched.append("sponsor?")
         if points >= cfg.get("min_score", 10):
             scored.append((job, points, matched))
     scored = semantic_pass(scored, cfg, errors, HERE / "seen.db")

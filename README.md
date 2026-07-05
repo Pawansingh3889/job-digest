@@ -162,3 +162,17 @@ LinkedIn or Indeed alert emails are printed as ready-made pick commands.
 Needs a Gmail app password in config.local.json, the same email block SMTP
 uses. Set LinkedIn job alerts to email and they flow into the pipeline
 without any scraping.
+
+## Sponsor check (UK visa sponsorship)
+
+If you need a Skilled Worker visa, only employers on the official register of
+licensed sponsors can hire you. With `sponsor_check.enabled` the digest keeps a
+weekly-cached copy of the gov.uk register (about 10 MB, refreshed
+automatically), checks every company, and scores accordingly: a verified
+sponsor gets a small bonus and a `sponsor` tag; a company with no register
+match gets a heavy penalty and a `sponsor?` tag. No-match is advisory, not
+fatal: some companies are licensed under a different legal entity, so check by
+hand before writing one off. Pair it with `min_salary_gbp`: GBP roles whose
+top salary is below your sponsorship threshold are dropped outright, because
+below the threshold a sponsor cannot sponsor. `junior_bonus` lifts
+junior/graduate/entry titles when those are the target.

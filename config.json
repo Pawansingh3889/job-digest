@@ -7,6 +7,9 @@
   "remote_bonus": 15,
   "hybrid_bonus": 8,
   "require_title_match": true,
+  "min_salary_gbp": 33400,
+  "junior_bonus": 15,
+  "sponsor_check": { "enabled": true, "max_age_days": 7, "penalty": 25, "bonus": 5 },
   "title_terms": [
     "data engineer", "analytics engineer", "ai engineer",
     "machine learning engineer", "ml engineer", "data platform",

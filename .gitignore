@@ -7,3 +7,5 @@ __pycache__/
 cv-master.html
 pipeline-ledger.db
 .profile-vec.json
+sponsors.csv
+sponsors.meta.json
