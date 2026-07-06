@@ -155,7 +155,7 @@ def one_pass(verbose=True):
     user, password = creds()
     con = sqlite3.connect(DB)
     apps = tracked_apps(con)
-    moved, rejections, alerts = [], [], []
+    moved, rejections, alerts, ambiguous = [], [], [], []
 
     box = imaplib.IMAP4_SSL("imap.gmail.com")
     box.login(user, password)
@@ -182,30 +182,52 @@ def one_pass(verbose=True):
             continue
 
         haystack = sender + " " + subject
+        confirm_hit = any(w in subject for w in CONFIRM_WORDS)
+        candidates = []
         for slug, company, title, stage in apps:
             token = company_token(company)
             if not token or token not in haystack:
                 continue
             if any(w in subject for w in REJECT_WORDS):
                 rejections.append((slug, company, subject[:70]))
-            elif stage == "picked" and any(w in subject for w in CONFIRM_WORDS):
-                con.execute("UPDATE apps SET stage='applied', updated=? WHERE slug=?",
-                            (datetime.now(timezone.utc).isoformat(), slug))
-                con.commit()
-                moved.append((slug, company))
+            elif stage == "picked" and confirm_hit:
+                candidates.append((slug, company, title))
+        chosen = candidates
+        if len(chosen) > 1:
+            # one confirmation, several packs at the same company: only a
+            # title word unique to one pack may decide, else touch nothing
+            toks = {s: set(re.findall(r"[a-z]{3,}", (t or "").lower()))
+                    for s, _c, t in chosen}
+            winners = []
+            for cand in chosen:
+                others = set().union(*(toks[o[0]] for o in chosen if o[0] != cand[0]))
+                if any(w in subject for w in toks[cand[0]] - others):
+                    winners.append(cand)
+            chosen = winners if len(winners) == 1 else []
+            if not chosen:
+                ambiguous.append((subject[:70], [s for s, _c, _t in candidates]))
+        for slug, company, _title in chosen:
+            con.execute("UPDATE apps SET stage='applied', updated=? WHERE slug=?",
+                        (datetime.now(timezone.utc).isoformat(), slug))
+            con.commit()
+            moved.append((slug, company))
     box.logout()
 
-    if verbose or moved or rejections or alerts:
+    if verbose or moved or rejections or alerts or ambiguous:
         stamp = datetime.now().strftime("%H:%M:%S")
         print(f"[{stamp}] scanned {min(len(ids),300)} messages")
         for slug, company in moved:
             print(f"  CONFIRMED  {company}: moved to applied ({slug})")
         for slug, company, subj in rejections:
             print(f"  REJECTION? {company}: \"{subj}\" -> confirm with: python apply.py rejected {slug}")
+        for subj, slugs in ambiguous:
+            print(f"  AMBIGUOUS  \"{subj}\" matches several packs; nothing moved. If one was really submitted:")
+            for s in slugs:
+                print(f"             python apply.py applied {s}")
         for subj, link in alerts[:15]:
             print(f"  ALERT      {subj}")
             print(f"             python apply.py pick {link}")
-        if not (moved or rejections or alerts):
+        if not (moved or rejections or alerts or ambiguous):
             print("  nothing new for the funnel")
     return moved, rejections, alerts
 
