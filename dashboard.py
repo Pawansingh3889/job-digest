@@ -189,23 +189,126 @@ async function tick(){
   document.getElementById('roles').innerHTML = s.roles.map(r=>
     `<div class="card"><a href="${esc(r.url)}" target="_blank">${esc(r.title)}</a>
      ${r.new?'<span class="chip c-new">new</span>':''}
-     <div class="sub"><span class="score">[${r.score}]</span> #${r.i} · ${esc(r.company)} · ${esc(r.source)}</div></div>`).join('');
+     <div class="sub"><span class="score">[${r.score}]</span> #${r.i} · ${esc(r.company)} · ${esc(r.source)}
+     · <a href="/prep?u=${encodeURIComponent(r.url)}" target="_blank">prep CV</a></div></div>`).join('');
 }
 function copy(el){ navigator.clipboard.writeText(el.textContent).then(()=>{ el.classList.add('copied'); setTimeout(()=>el.classList.remove('copied'),700); }); }
 tick(); setInterval(tick, 3000);
 </script></body></html>"""
 
 
+def prep_pack(url):
+    """Build (or reuse) the application pack for a job URL: pick, tailor,
+    render the CV pdf. Returns the slug. Existing tailoring is never
+    overwritten: a second click just shows the pack again."""
+    import apply
+    con = apply.db()
+    row = con.execute("SELECT slug FROM apps WHERE url = ?", (url,)).fetchone()
+    if row:
+        slug = row[0]
+    else:
+        slug, _ = apply.cmd_pick(url)
+    folder = HERE / "applications" / slug
+    if not (folder / "cv-draft.md").exists():
+        apply.cmd_tailor(slug)
+    if not list(folder.glob("CV_*.pdf")):
+        company = con.execute("SELECT company FROM apps WHERE slug = ?", (slug,)).fetchone()[0]
+        apply.render_pdf(slug, company)
+    return slug
+
+
+def pack_page(slug):
+    e = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;")
+    folder = HERE / "applications" / slug
+    if not folder.exists():
+        return None
+    con = sqlite3.connect(DB)
+    row = con.execute("SELECT company, title, url, stage FROM apps WHERE slug = ?", (slug,)).fetchone()
+    con.close()
+    company, title, url, stage = row if row else ("", slug, "", "?")
+    pdfs = sorted(folder.glob("CV_*.pdf"))
+    files = sorted(p.name for p in folder.iterdir() if p.is_file())
+    parts = [
+        "<meta charset='utf-8'><title>pack</title>",
+        "<div style='font-family:Segoe UI,Arial,sans-serif;max-width:700px;margin:32px auto;color:#1a1d29;'>",
+        f"<h2 style='margin-bottom:2px;'>{e(title)}</h2>",
+        f"<p style='color:#666;margin-top:0;'>{e(company)} · stage: {e(stage)} · <a href='{e(url)}'>the posting</a></p>",
+    ]
+    if pdfs:
+        parts.append(f"<p style='font-size:17px;'>Your CV for this job: "
+                     f"<a href='/f/{slug}/{pdfs[0].name}'><b>{pdfs[0].name}</b></a></p>")
+    parts.append("<p>Everything in the pack:</p><ul>")
+    for name in files:
+        parts.append(f"<li><a href='/f/{slug}/{name}'>{e(name)}</a></li>")
+    parts.append("</ul>")
+    parts.append("<p style='color:#666;font-size:13px;'>The CV starts from your master; tailor it "
+                 "against job.md before sending (checklist inside cv-draft.md). If this is a LinkedIn "
+                 "link the JD is not captured yet: open the posting, paste the description into job.md, "
+                 f"then re-tailor. Walk the form when ready: <code>python apply.py fill {slug}</code>. "
+                 f"Submitted? <code>python apply.py applied {slug}</code></p></div>")
+    return "\n".join(parts)
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/api/state":
+        import urllib.parse
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/api/state":
             body = json.dumps(state()).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-        elif self.path == "/":
+        elif parsed.path == "/":
             body = PAGE.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+        elif parsed.path == "/prep":
+            target = urllib.parse.parse_qs(parsed.query).get("u", [""])[0]
+            if not target.startswith("http"):
+                body, code = b"bad url", 400
+            else:
+                try:
+                    slug = prep_pack(target)
+                    self.send_response(302)
+                    self.send_header("Location", f"/pack/{slug}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                except SystemExit as exc:
+                    body, code = str(exc).encode(), 500
+                except Exception as exc:
+                    body, code = f"prep failed: {exc}".encode(), 500
+            self.send_response(code)
+            self.send_header("Content-Type", "text/plain")
+        elif parsed.path.startswith("/pack/"):
+            page = pack_page(parsed.path[len("/pack/"):])
+            if page is None:
+                body, code = b"no such pack", 404
+                self.send_response(code)
+                self.send_header("Content-Type", "text/plain")
+            else:
+                body = page.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+        elif parsed.path.startswith("/f/"):
+            body = None
+            try:
+                slug, name = parsed.path[len("/f/"):].split("/", 1)
+                name = urllib.parse.unquote(name)
+                target = (HERE / "applications" / slug / name).resolve()
+                if target.is_file() and target.parent == (HERE / "applications" / slug).resolve():
+                    body = target.read_bytes()
+                    ctype = {"pdf": "application/pdf", "html": "text/html; charset=utf-8"}.get(
+                        target.suffix.lstrip("."), "text/plain; charset=utf-8")
+            except (ValueError, OSError):
+                pass
+            if body is None:
+                body = b"not found"
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain")
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Disposition", f'inline; filename="{name}"')
         else:
             body = b"not found"
             self.send_response(404)

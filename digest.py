@@ -20,6 +20,7 @@ import re
 import sqlite3
 import sys
 import webbrowser
+from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -500,16 +501,18 @@ def alert_seeds(db_path, done_urls):
         con = sqlite3.connect(db_path)
         for url, run_date in con.execute("SELECT url, MIN(run_date) FROM shown GROUP BY url"):
             first_shown[url] = run_date
-        for url, first_seen, title, payload in con.execute(
-                "SELECT url, first_seen, title, payload FROM seen"):
+        for url, first_seen, title, company, payload in con.execute(
+                "SELECT url, first_seen, title, company, payload FROM seen"):
             try:
                 j = json.loads(payload)
             except (TypeError, json.JSONDecodeError):
                 continue
             if not str(j.get("source", "")).endswith("-alert") or url in done_urls:
                 continue
-            if title:
-                j["title"] = title  # the seen column carries backfilled titles
+            if title:  # the seen columns carry backfilled titles/companies
+                j["title"] = title
+            if company:
+                j["company"] = company
             j["posted"] = None
             j["first_seen"] = first_seen or ""
             seeds.append(j)
@@ -533,7 +536,9 @@ def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=froz
         f"<h2 style='margin-bottom:2px;'>Job digest, {e(today)}</h2>",
         f"<p style='color:#666;margin-top:0;'>{len(rows)} open roles, {new_count} new today. "
         "Roles stay here until applied or rejected. "
-        + " · ".join(f"{k}: {v}" for k, v in counts.items()) + "</p>",
+        + " · ".join(f"{k}: {v}" for k, v in counts.items()) + "<br>"
+        "<span style='font-size:12px;'>prep CV builds the application pack and resume on this "
+        "PC (needs the dashboard running: python dashboard.py).</span></p>",
     ]
     for job, points, matched in rows:
         badge = ""
@@ -551,6 +556,8 @@ def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=froz
             f"<div style='color:#444;margin-top:2px;'>{e(job['company'])} · {e(job['location'] or 'remote')}{salary}</div>"
             f"<div style='color:#888;font-size:12px;margin-top:6px;'>score {points} · {e(job['source'])}"
             + (f" · posted {posted}" if posted else "")
+            + f" · <a href='http://127.0.0.1:8765/prep?u={quote(job['url'], safe='')}' "
+              "style='color:#0a66c2;'>prep CV</a>"
             + (f"<br>matched: {e(terms)}" if terms else "")
             + "</div></div>"
         )
@@ -574,8 +581,13 @@ def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=froz
                 "<div style='border:1px solid #e3e6ef;border-radius:8px;padding:10px 16px;margin:8px 0;'>"
                 f"<div style='font-size:15px;font-weight:600;'><a href='{e(j['url'])}' "
                 f"style='color:#0a66c2;text-decoration:none;'>{e(j['title'][:110])}</a>{badge}</div>"
-                f"<div style='color:#888;font-size:12px;margin-top:4px;'>{e(j.get('source',''))}"
-                + (f" · arrived {e(when)}" if when else "") + "</div></div>"
+                f"<div style='color:#888;font-size:12px;margin-top:4px;'>"
+                + (f"{e(j['company'])} · " if j.get("company") else "")
+                + f"{e(j.get('source',''))}"
+                + (f" · arrived {e(when)}" if when else "")
+                + f" · <a href='http://127.0.0.1:8765/prep?u={quote(j['url'], safe='')}' "
+                  "style='color:#0a66c2;'>prep CV</a>"
+                + "</div></div>"
             )
         if len(titled) > 30:
             parts.append(f"<p style='color:#888;font-size:12px;'>...and {len(titled)-30} more titled roles in the dashboard.</p>")

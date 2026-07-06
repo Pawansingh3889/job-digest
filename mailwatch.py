@@ -106,7 +106,11 @@ def harvest(verbose=True):
 
     box = imaplib.IMAP4_SSL("imap.gmail.com")
     box.login(user, password)
-    box.select("INBOX", readonly=True)
+    # All Mail rather than INBOX: filter the raw alert emails straight to a
+    # label to keep your inbox clean, and the harvest still finds them
+    status, _ = box.select('"[Gmail]/All Mail"', readonly=True)
+    if status != "OK":
+        box.select("INBOX", readonly=True)
     since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%d-%b-%Y")
     _, data = box.search(None, f'(SINCE "{since}")')
     ids = data[0].split()
@@ -126,17 +130,22 @@ def harvest(verbose=True):
         source = "linkedin-alert" if "linkedin" in sender else "indeed-alert"
         for title, url in parse_alert_jobs(html):
             if title.startswith("(") and subject:
-                # no anchor text: the alert subject is the best context we have
-                title = f"(alert: {subject[:70]})"
+                # no anchor text. The subject names only the headline role;
+                # the other links are "similar jobs", so claiming the subject
+                # as this link's title would fabricate identities. Keep it as
+                # context only.
+                title = f"(from the alert: {subject[:70]})"
             known = con.execute("SELECT 1 FROM seen WHERE url = ?", (url,)).fetchone()
             payload = json.dumps({"source": source, "title": title, "company": "",
                                   "location": "", "salary": "", "url": url,
                                   "posted": None, "description": ""})
             con.execute("INSERT OR IGNORE INTO seen (url, first_seen, title, company, payload) VALUES (?,?,?,?,?)",
                         (url, now, title, "", payload))
-            if known:  # upgrade a stored placeholder title, never a real one
-                con.execute("UPDATE seen SET title = ? WHERE url = ? AND title LIKE '(%'",
-                            (title, url))
+            if known:  # refresh a stored placeholder, never a real title
+                con.execute(
+                    "UPDATE seen SET title = ?, payload = ? "
+                    "WHERE url = ? AND title LIKE '(%'",
+                    (title, payload, url))
             con.execute("INSERT OR IGNORE INTO shown (run_date, url, score) VALUES (?,?,?)",
                         (stamp, url, 40))
             if not known:
