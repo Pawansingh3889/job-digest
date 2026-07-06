@@ -165,6 +165,10 @@ closes the loop the rest of the tool cannot see: an ATS confirmation email
 matching a picked application moves it to applied automatically, rejection
 wording is surfaced with the command to confirm it, and job links inside
 LinkedIn or Indeed alert emails are printed as ready-made pick commands.
+Once email is configured, digest.py also runs the alert harvest itself before
+fetching, so alert roles arrive in the same digest, email and notification as
+board roles, in their own section, without being re-scored by keywords their
+bare links cannot match.
 Needs a Gmail app password in config.local.json, the same email block SMTP
 uses. Set LinkedIn job alerts to email and they flow into the pipeline
 without any scraping.
