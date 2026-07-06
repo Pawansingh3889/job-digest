@@ -38,7 +38,7 @@ ATS_SENDERS = ("greenhouse.io", "lever.co", "hibob.com", "ashbyhq.com",
                "workable.com", "myworkdayjobs.com", "smartrecruiters.com",
                "teamtailor.com", "bamboohr.com", "ecotricity.co.uk", "indeed.com")
 ALERT_SENDERS = ("jobalerts-noreply@linkedin.com", "jobs-noreply@linkedin.com",
-                 "alert@indeed.com", "noreply@jobicy.com")
+                 "alert@indeed.com", "match.indeed.com", "noreply@jobicy.com")
 REJECT_WORDS = ("unfortunately", "not be taking", "regret to inform",
                 "not been selected", "unsuccessful", "other candidates")
 CONFIRM_WORDS = ("thank you for applying", "thanks for applying",
