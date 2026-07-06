@@ -120,16 +120,23 @@ def harvest(verbose=True):
         sender = (msg.get("From") or "").lower()
         if not any(s in sender for s in ALERT_SENDERS):
             continue
+        subject = (msg.get("Subject") or "").strip()
         body = msg.get_body(preferencelist=("html", "plain"))
         html = body.get_content() if body else ""
         source = "linkedin-alert" if "linkedin" in sender else "indeed-alert"
         for title, url in parse_alert_jobs(html):
+            if title.startswith("(") and subject:
+                # no anchor text: the alert subject is the best context we have
+                title = f"(alert: {subject[:70]})"
             known = con.execute("SELECT 1 FROM seen WHERE url = ?", (url,)).fetchone()
             payload = json.dumps({"source": source, "title": title, "company": "",
                                   "location": "", "salary": "", "url": url,
                                   "posted": None, "description": ""})
             con.execute("INSERT OR IGNORE INTO seen (url, first_seen, title, company, payload) VALUES (?,?,?,?,?)",
                         (url, now, title, "", payload))
+            if known:  # upgrade a stored placeholder title, never a real one
+                con.execute("UPDATE seen SET title = ? WHERE url = ? AND title LIKE '(%'",
+                            (title, url))
             con.execute("INSERT OR IGNORE INTO shown (run_date, url, score) VALUES (?,?,?)",
                         (stamp, url, 40))
             if not known:

@@ -488,9 +488,42 @@ def record_shown(rows, db_path):
     con.close()
 
 
+def alert_seeds(db_path, done_urls):
+    """Roles harvested from job-alert emails (mailwatch). The alert query you
+    set with the job board already filtered these, so they are listed beside
+    the scored digest instead of being re-gated by keywords they cannot match
+    (alert links often arrive without a usable title). Returns (seeds,
+    first_shown) where first_shown maps url -> earliest shown run_date, for
+    deciding what counts as new."""
+    seeds, first_shown = [], {}
+    try:
+        con = sqlite3.connect(db_path)
+        for url, run_date in con.execute("SELECT url, MIN(run_date) FROM shown GROUP BY url"):
+            first_shown[url] = run_date
+        for url, first_seen, title, payload in con.execute(
+                "SELECT url, first_seen, title, payload FROM seen"):
+            try:
+                j = json.loads(payload)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not str(j.get("source", "")).endswith("-alert") or url in done_urls:
+                continue
+            if title:
+                j["title"] = title  # the seen column carries backfilled titles
+            j["posted"] = None
+            j["first_seen"] = first_seen or ""
+            seeds.append(j)
+        con.close()
+    except sqlite3.OperationalError:
+        pass
+    seeds.sort(key=lambda j: j.get("first_seen", ""), reverse=True)
+    seeds.sort(key=lambda j: j.get("title", "").startswith("("))  # titled first
+    return seeds, first_shown
+
+
 # ---------------------------------------------------------------- output
 
-def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=frozenset()):
+def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=frozenset(), seeds=()):
     e = html.escape
     today = datetime.now().strftime("%A %d %B %Y")
     new_count = sum(1 for job, _, _ in rows if job["url"] in new_urls)
@@ -523,6 +556,42 @@ def build_html(rows, errors, counts, cfg, new_urls=frozenset(), picked_urls=froz
         )
     if not rows:
         parts.append("<p>Nothing open above the score threshold. Applied and rejected roles drop off this page.</p>")
+    if seeds:
+        NEW = "<span style='background:#0a66c2;color:#fff;font-size:11px;border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:2px;'>new</span>"
+        PICKED = "<span style='background:#e8a411;color:#fff;font-size:11px;border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:2px;'>in progress</span>"
+        parts.append(
+            f"<h3 style='margin:26px 0 2px;'>From your job alerts ({len(seeds)})</h3>"
+            "<p style='color:#666;margin-top:0;font-size:13px;'>Sent to you by the alerts you set up, "
+            "so they are not re-scored. The pages usually need a login: pick one, then paste the "
+            "description into its pack.</p>"
+        )
+        titled = [j for j in seeds if not j.get("title", "").startswith("(")]
+        untitled = [j for j in seeds if j.get("title", "").startswith("(")]
+        for j in titled[:30]:
+            badge = (NEW if j["url"] in new_urls else "") + (PICKED if j["url"] in picked_urls else "")
+            when = (j.get("first_seen") or "")[:10]
+            parts.append(
+                "<div style='border:1px solid #e3e6ef;border-radius:8px;padding:10px 16px;margin:8px 0;'>"
+                f"<div style='font-size:15px;font-weight:600;'><a href='{e(j['url'])}' "
+                f"style='color:#0a66c2;text-decoration:none;'>{e(j['title'][:110])}</a>{badge}</div>"
+                f"<div style='color:#888;font-size:12px;margin-top:4px;'>{e(j.get('source',''))}"
+                + (f" · arrived {e(when)}" if when else "") + "</div></div>"
+            )
+        if len(titled) > 30:
+            parts.append(f"<p style='color:#888;font-size:12px;'>...and {len(titled)-30} more titled roles in the dashboard.</p>")
+        groups: dict[str, list] = {}
+        for j in untitled:
+            groups.setdefault(j.get("title", "(link)"), []).append(j)
+        for gtitle, items in list(groups.items())[:12]:
+            links = " ".join(
+                f"<a href='{e(j['url'])}' style='color:#0a66c2;text-decoration:none;'>[{i+1}]</a>"
+                for i, j in enumerate(items[:15])
+            )
+            mark = NEW if any(j["url"] in new_urls for j in items) else ""
+            parts.append(
+                f"<div style='margin:6px 0;font-size:13px;color:#444;'>{e(gtitle.strip('()')[:80])} "
+                f"{links}{mark}</div>"
+            )
     if errors:
         parts.append(
             "<p style='color:#a33;font-size:12px;'>Source errors: " + e("; ".join(errors)) + "</p>"
@@ -590,6 +659,19 @@ def main():
 
     cfg = load_config()
     errors: list[str] = []
+
+    # one morning run does everything: harvest the job-alert emails first,
+    # so their roles land in the same digest, email and toast as board roles
+    email_cfg = cfg.get("email", {})
+    if email_cfg.get("username") and email_cfg.get("password"):
+        try:
+            import mailwatch
+            mailwatch.harvest(verbose=False)
+        except SystemExit:
+            pass
+        except Exception as exc:
+            errors.append(f"harvest: {str(exc)[:60]}")
+
     all_jobs = (
         fetch_remotive(cfg, errors)
         + fetch_remoteok(cfg, errors)
@@ -630,6 +712,11 @@ def main():
         con.close()
     except sqlite3.OperationalError:
         pass
+
+    stamp_today = datetime.now().strftime("%Y-%m-%d")
+    seeds, first_shown = alert_seeds(HERE / "seen.db", done_urls)
+    seed_new = {j["url"] for j in seeds if first_shown.get(j["url"], stamp_today) >= stamp_today}
+    new_urls |= seed_new
 
     title_set = {t.lower() for t in cfg.get("title_terms", [])}
 
@@ -693,8 +780,17 @@ def main():
         unique.append(row)
     scored = unique[: cfg.get("max_items", 30)]
     record_shown(scored, HERE / "seen.db")
+    if seeds:  # record_shown rebuilt today's rows; alert seeds belong in them too
+        con = sqlite3.connect(HERE / "seen.db")
+        con.executemany(
+            "INSERT OR REPLACE INTO shown (run_date, url, score) VALUES (?, ?, 40)",
+            [(stamp_today, j["url"]) for j in seeds],
+        )
+        con.commit()
+        con.close()
 
-    body = build_html(scored, errors, counts, cfg, new_urls, picked_urls)
+    counts["job-alerts"] = len(seeds)
+    body = build_html(scored, errors, counts, cfg, new_urls, picked_urls, seeds)
     out_dir = HERE / "digests"
     out_dir.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d")
@@ -702,14 +798,15 @@ def main():
     out_file.write_text(body, encoding="utf-8")
     (out_dir / "latest.html").write_text(body, encoding="utf-8")
 
-    new_count = sum(1 for job, _, _ in scored if job["url"] in new_urls)
-    subject = f"Job digest: {len(scored)} open, {new_count} new ({stamp})"
-    want_email = scored and (new_count or not cfg.get("email", {}).get("only_when_new", True))
+    new_count = sum(1 for job, _, _ in scored if job["url"] in new_urls) + len(seed_new)
+    subject = f"Job digest: {len(scored)} open + {len(seeds)} alert roles, {new_count} new ({stamp})"
+    want_email = (scored or seeds) and (new_count or not cfg.get("email", {}).get("only_when_new", True))
     emailed = send_email(cfg, subject, body, errors) if want_email else False
     if new_count:
         notify_windows(new_count, errors)
 
-    print(f"fetched={len(all_jobs)} eligible={len(kept)} new={len(fresh)} open={len(scored)} emailed={emailed}")
+    print(f"fetched={len(all_jobs)} eligible={len(kept)} new={len(fresh)} "
+          f"open={len(scored)} alerts={len(seeds)} emailed={emailed}")
     for job, points, _ in scored[:5]:
         print(f"  [{points:>3}] {job['title']} - {job['company']} ({job['source']})")
     if errors:
