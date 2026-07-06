@@ -554,6 +554,35 @@ def send_email(cfg, subject, body_html, errors):
         return False
 
 
+def notify_windows(new_count, errors):
+    """Fire a Windows toast so a scheduled run can say 'new roles today'
+    without email being set up. Best effort: failures logged, never fatal."""
+    if sys.platform != "win32":
+        return
+    text = f"{new_count} new role{'s' if new_count != 1 else ''} in today's digest"
+    script = (
+        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, "
+        "ContentType = WindowsRuntime] | Out-Null;"
+        "$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+        "[Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
+        "$t = $x.GetElementsByTagName('text');"
+        "$t.Item(0).AppendChild($x.CreateTextNode('job-digest')) | Out-Null;"
+        f"$t.Item(1).AppendChild($x.CreateTextNode('{text}')) | Out-Null;"
+        "$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe';"
+        "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show("
+        "[Windows.UI.Notifications.ToastNotification]::new($x))"
+    )
+    try:
+        import subprocess
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, timeout=20,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except Exception as exc:
+        errors.append(f"toast: {str(exc)[:60]}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch, dedupe and score new job postings.")
     parser.add_argument("--quiet", action="store_true", help="no browser; for scheduled runs")
@@ -675,7 +704,10 @@ def main():
 
     new_count = sum(1 for job, _, _ in scored if job["url"] in new_urls)
     subject = f"Job digest: {len(scored)} open, {new_count} new ({stamp})"
-    emailed = send_email(cfg, subject, body, errors) if scored else False
+    want_email = scored and (new_count or not cfg.get("email", {}).get("only_when_new", True))
+    emailed = send_email(cfg, subject, body, errors) if want_email else False
+    if new_count:
+        notify_windows(new_count, errors)
 
     print(f"fetched={len(all_jobs)} eligible={len(kept)} new={len(fresh)} open={len(scored)} emailed={emailed}")
     for job, points, _ in scored[:5]:

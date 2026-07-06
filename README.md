@@ -109,6 +109,16 @@ Linux or macOS, the cron line is:
 30 7 * * * cd /path/to/job-digest && python3 digest.py --quiet
 ```
 
+## How you hear about new roles
+
+Three tiers, use any or all. On Windows, a scheduled run that finds anything
+new fires a toast notification saying how many; no toast means nothing new,
+so silence is information too. With SMTP configured, the digest is emailed,
+and by default only on days when something new appeared ("email":
+{"only_when_new": false} to get it daily regardless). And the digest HTML
+plus the dashboard are always there to pull from, with NEW badges on
+anything you have not seen before.
+
 ## Behind a corporate proxy or antivirus
 
 If every HTTPS call fails with a certificate error, your machine has TLS
